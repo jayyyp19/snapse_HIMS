@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Upload and Recording</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        #audioPlayer {
+            width: 100%;
+            margin-top: 10px;
+        }
+        #recordButton {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Record Your Prescription</h1>
+        <input type="file" id="audioFile" accept="audio/*">
+        <audio id="audioPlayer" controls></audio>
+        <button id="recordButton">Record</button>
+        <button id="transcribeButton">Transcribe</button>
+        <button id="saveButton" disabled>Save Transcription</button>
+        <div id="transcriptionResult" style="margin-top: 10px;"></div>
+    </div>
+
+    <script>
+        const audioFileInput = document.getElementById('audioFile');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const recordButton = document.getElementById('recordButton');
+
+        let mediaRecorder;
+        let recordedChunks = [];
+
+        audioFileInput.addEventListener('change', function() {
+            const selectedFile = audioFileInput.files[0];
+            
+            if (selectedFile) {
+                audioPlayer.src = URL.createObjectURL(selectedFile);
+                audioPlayer.style.display = 'block';
+            }
+        });
+
+        recordButton.addEventListener('click', async function() {
+            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+                recordedChunks = [];
+                mediaRecorder = new MediaRecorder(await navigator.mediaDevices.getUserMedia({ audio: true }));
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) {
+                        recordedChunks.push(event.data);
+                    }
+                };
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'audio/wav' });
+                    audioPlayer.src = URL.createObjectURL(blob);
+                    audioPlayer.style.display = 'block';
+                };
+                mediaRecorder.start();
+                recordButton.textContent = 'Stop Recording';
+            } else {
+                mediaRecorder.stop();
+                recordButton.textContent = 'Record';
+            }
+        });
+
+        const transcribeButton = document.getElementById('transcribeButton');
+        const transcriptionResult = document.getElementById('transcriptionResult');
+        const saveButton = document.getElementById('saveButton');
+
+        let transcriptionText = '';
+
+        transcribeButton.addEventListener('click', async function() {
+            if (audioPlayer.src) {
+                const audioBlob = await fetch(audioPlayer.src).then(response => response.blob());
+                const audioBuffer = await audioBlob.arrayBuffer();
+                const audioContext = new AudioContext();
+                const audioBufferSource = audioContext.createBufferSource();
+
+                audioContext.decodeAudioData(audioBuffer, async function(buffer) {
+                    audioBufferSource.buffer = buffer;
+                    const audioStream = audioBufferSource.stream;
+
+                    const recognition = new webkitSpeechRecognition();
+                    recognition.continuous = true;
+                    recognition.interimResults = true;
+                    recognition.lang = 'en-US';
+
+                    recognition.onresult = event => {
+                        let transcription = '';
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            transcription += event.results[i][0].transcript;
+                        }
+                        transcriptionResult.textContent = transcription;
+
+                        transcriptionText += transcription;
+                        transcriptionResult.textContent = transcriptionText;
+                        saveButton.removeAttribute('disabled');
+                    };
+
+                    recognition.onend = () => {
+                        recognition.stop();
+                    };
+
+                    audioBufferSource.connect(audioContext.destination);
+                    audioBufferSource.start();
+
+                    recognition.start();
+
+                    saveButton.addEventListener('click', function() {
+                    const blob = new Blob([transcriptionText], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'transcription.txt';
+                    a.click();
+                    });
+
+                    
+                });
+            }
+        });
+    </script>
+
+
+
+</body>
+</html>
