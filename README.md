@@ -1,1 +1,1 @@
-# snapse_HIMS
+# synapse_HMS
